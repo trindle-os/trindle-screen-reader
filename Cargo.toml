@@ -1,0 +1,34 @@
+[package]
+name = "trindle-screen-reader"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+description = "Trindle's own screen reader"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "reader"
+path = "src/lib.rs"
+
+[[bin]]
+name = "trindle-screen-reader"
+path = "src/main.rs"
+
+[dependencies]
+atspi = { version = "0.30", default-features = false, features = ["tokio", "proxies", "wrappers"] }
+atspi-connection = { version = "0.14", default-features = false, features = ["wrappers"] }
+futures-lite = "2.6.1"
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1.54.1", features = ["rt", "net", "time", "sync", "macros", "io-util", "signal", "process"] }
+toml = "1"
+trindle-common = { git = "https://github.com/trindle-os/trindle-toolkit", rev = "3b1e06bc4d4ccb94b9d7b876feecc37aa4765e74" }
+unicode-segmentation = "1"
+# Held at 5 until atspi moves to zbus 6; upgrade the two together.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true

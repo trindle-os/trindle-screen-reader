@@ -1,0 +1,40 @@
+<!doctype html><meta charset=utf-8><style>
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1280px; height: 420px; }
+body { background: #14161c; font-family: "Trindle Sans", system-ui, sans-serif; color: #f2f3f6;
+  display: flex; align-items: center; justify-content: center; gap: 30px; padding: 0 48px; }
+.step { width: 352px; height: 330px; background: #1f232c; border-radius: 22px; border: 1px solid #343a47;
+  padding: 26px 26px 22px; display: flex; flex-direction: column; }
+.num { font-size: 13px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #8fd8f5; }
+h2 { font-size: 24px; font-weight: 600; margin-top: 8px; letter-spacing: -.01em; }
+p { font-size: 16px; color: #c3c8d4; margin-top: 8px; line-height: 1.45; }
+.art { flex: 1; display: grid; place-items: center; margin-top: 10px; }
+.arrow { color: #6d7587; flex: none; font-size: 40px; line-height: 1; }
+.win { width: 170px; height: 90px; border-radius: 12px; background: #14161c; border: 1px solid #454c5b; overflow: hidden; }
+.bar { height: 20px; background: #2a2f3a; }
+.win i { display: block; height: 5px; border-radius: 3px; background: #454c5b; margin: 12px 14px 0; width: 60%; }
+.win i + i { width: 78%; }
+.win .btn { height: 18px; width: 56px; border-radius: 6px; background: #8fd8f5; margin: 10px 14px 0; }
+.brain { display: flex; flex-direction: column; gap: 8px; width: 190px; }
+.row { padding: 8px 12px; border-radius: 9px; background: #14161c; border: 1px solid #454c5b; font-size: 15px; color: #f2f3f6; }
+.row b { color: #8fd8f5; font-weight: 600; }
+.wave { display: flex; align-items: center; gap: 7px; height: 90px; }
+.wave span { width: 9px; border-radius: 5px; background: #8fd8f5; }
+</style>
+<div class=step>
+  <div class=num>Step one</div><h2>A program shows a window</h2>
+  <p>The reader listens on the accessibility bus for focus, text and alerts.</p>
+  <div class=art><div class=win><div class=bar></div><i></i><i></i><div class=btn></div></div></div>
+</div>
+<div class=arrow>&rarr;</div>
+<div class=step>
+  <div class=num>Step two</div><h2>One owner decides what to say</h2>
+  <p>It drops repeats and stale news, and never reads a secret field.</p>
+  <div class=art><div class=brain><div class=row><b>Said:</b> Save, button</div><div class=row><b>Skipped:</b> password</div></div></div>
+</div>
+<div class=arrow>&rarr;</div>
+<div class=step>
+  <div class=num>Step three</div><h2>The Trindle voice speaks</h2>
+  <p>Speech goes to the shared voice service. The reader never talks over itself.</p>
+  <div class=art><div class=wave><span style="height:24px"></span><span style="height:52px"></span><span style="height:78px"></span><span style="height:40px"></span><span style="height:64px"></span><span style="height:30px"></span><span style="height:18px"></span></div></div>
+</div>

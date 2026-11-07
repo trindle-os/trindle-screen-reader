@@ -1,0 +1,38 @@
+[[step]]
+at = 0
+kind = "window_activated"
+[step.object]
+role = "window"
+name = "Hello"
+
+[[step]]
+at = 2000
+kind = "focus"
+[step.object]
+role = "button"
+name = "Save"
+
+[[step]]
+at = 4000
+kind = "focus"
+[step.object]
+role = "check_box"
+name = "Remember me"
+states = ["checked"]
+[step.object.container]
+id = "g1"
+role = "group"
+name = "Network settings"
+
+[[step]]
+at = 4100
+kind = "focus"
+[step.object]
+role = "text_entry"
+name = "Name"
+value = ""
+states = ["required"]
+[step.object.container]
+id = "g1"
+role = "group"
+name = "Network settings"

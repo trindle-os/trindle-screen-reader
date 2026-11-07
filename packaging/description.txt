@@ -1,0 +1,5 @@
+The screen reader speaks what is on the screen: the window you are in, the button or box you move to, what you type, and messages as they arrive. It is for people who cannot see the screen, and for anyone who wants it read aloud.
+
+Turn it on in Settings or press Super+Alt+S. Everything is spoken on your own computer and nothing leaves it. It never reads out a password.
+
+The screen reader asks to make sound (to speak and for its short cues) and for accessibility, which lets it read what every window shows and say it aloud.
