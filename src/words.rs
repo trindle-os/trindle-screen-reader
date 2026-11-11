@@ -1,4 +1,4 @@
-//! Every word the reader says on its own, in one place so it can be translated.
+//! Most of the words the reader says on its own, as constants. A few more sit in browse.rs, caret.rs and the key names, and nothing is looked up at run time, so another language means a rebuild.
 
 use crate::model::{Role, State};
 
@@ -115,6 +115,7 @@ pub const REVIEW_TOP: &str = "top";
 pub const REVIEW_BOTTOM: &str = "bottom";
 
 pub const REVIEW_EMPTY: &str = "nothing on screen";
+pub const WINDOW_CUT: &str = "This window is too large to read whole. The rest is left out.";
 
 pub const REVIEW_PROTECTED: &str = "protected";
 

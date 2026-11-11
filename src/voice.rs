@@ -39,7 +39,7 @@ pub fn encode_with(o: &Out, levels: Option<(u8, u8)>) -> String {
                 Priority::Normal => "normal",
                 Priority::Background => "background",
             };
-            let text: String = text.chars().map(|c| if is_line_end(c) { ' ' } else { c }).collect();
+            let text: String = text.chars().map(|c| if is_line_end(c) || c.is_control() { ' ' } else { c }).collect();
             let lv = levels.map(|(r, v)| format!("rate={r}\nvolume={v}\n")).unwrap_or_default();
             format!("SAY\nid={id}\npriority={p}\n{lv}text={text}\n\n")
         }

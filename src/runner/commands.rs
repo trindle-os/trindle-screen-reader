@@ -18,7 +18,7 @@ impl Reader {
             let now = self.now();
             return review_outs(&mut self.coord, now, lines);
         }
-        self.review_wanted = Some((self.generation, cmd));
+        self.review_wanted = Some(cmd);
         if self.fetching.insert((self.generation, FETCH_ITEMS)) {
             let (bus, tx, generation) = (self.bus.clone(), self.fetch_tx.clone(), self.generation);
             tokio::task::spawn_local(async move {
@@ -72,7 +72,7 @@ impl Reader {
             let now = self.now();
             return review_outs(&mut self.coord, now, lines);
         }
-        self.browse_wanted = Some((self.generation, cmd));
+        self.browse_wanted = Some(cmd);
         if self.fetching.insert((self.generation, FETCH_DOC)) {
             let (bus, tx, generation) = (self.bus.clone(), self.fetch_tx.clone(), self.generation);
             tokio::task::spawn_local(async move {
@@ -159,15 +159,20 @@ impl Reader {
     }
 
     fn browse_arrived(&mut self, doc: Option<Doc>) {
-        if let Some((nodes, refs, focus)) = doc {
+        let mut cut = false;
+        if let Some((nodes, refs, focus, was_cut)) = doc {
             self.browse = Some(Browser::new(nodes, focus));
             self.browse_refs = refs;
+            cut = was_cut;
         }
-        let lines = match (self.browse.as_mut(), self.browse_wanted.take()) {
-            (Some(b), Some((_, cmd))) => run_browse(b, cmd),
+        let mut lines = match (self.browse.as_mut(), self.browse_wanted.take()) {
+            (Some(b), Some(cmd)) => run_browse(b, cmd),
             (None, Some(_)) => vec![reader::words::BROWSE_EMPTY.to_string()],
             _ => vec![],
         };
+        if cut {
+            lines.push(reader::words::WINDOW_CUT.to_string());
+        }
         self.follow_cursor();
         self.leave_browse_for_focus();
         let now = self.now();
@@ -175,19 +180,24 @@ impl Reader {
         self.emit(outs);
     }
 
-    fn review_arrived(&mut self, items: Option<(Vec<ReviewItem>, Option<u64>)>) {
-        if let Some((items, focus)) = items {
-            let mut r = Review::build(items, false);
+    fn review_arrived(&mut self, items: Option<(Vec<ReviewItem>, Option<u64>, bool)>) {
+        let mut cut = false;
+        if let Some((items, focus, was_cut)) = items {
+            cut = was_cut;
+            let mut r = Review::build(items);
             if let Some(f) = focus {
                 r.enter(f);
             }
             self.review = Some(r);
         }
-        let lines = match (self.review.as_mut(), self.review_wanted.take()) {
-            (Some(r), Some((_, cmd))) => reader::keys::run_review(r, cmd),
+        let mut lines = match (self.review.as_mut(), self.review_wanted.take()) {
+            (Some(r), Some(cmd)) => reader::keys::run_review(r, cmd),
             (None, Some(_)) => vec![reader::words::REVIEW_EMPTY.to_string()],
             _ => vec![],
         };
+        if cut {
+            lines.push(reader::words::WINDOW_CUT.to_string());
+        }
         let now = self.now();
         let outs = review_outs(&mut self.coord, now, lines);
         self.emit(outs);

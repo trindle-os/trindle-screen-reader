@@ -18,7 +18,7 @@ path = "src/main.rs"
 atspi = { version = "0.30", default-features = false, features = ["tokio", "proxies", "wrappers"] }
 atspi-connection = { version = "0.14", default-features = false, features = ["wrappers"] }
 futures-lite = "2.6.1"
-rustix = { version = "1", default-features = false, features = ["std", "process"] }
+rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1.54.1", features = ["rt", "net", "time", "sync", "macros", "io-util", "signal", "process"] }
 toml = "1"

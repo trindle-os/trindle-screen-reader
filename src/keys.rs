@@ -124,12 +124,11 @@ pub use bindings::{default_bindings, Binding};
 
 pub struct Keymap {
     bindings: Vec<Binding>,
-    pub unclaimed_stop: bool,
 }
 
 impl Keymap {
     pub fn new(layout: Layout) -> Keymap {
-        Keymap { bindings: default_bindings(layout), unclaimed_stop: true }
+        Keymap { bindings: default_bindings(layout) }
     }
 
     fn find(&self, layer: Option<Layer>, c: &Combo) -> Option<&Binding> {
@@ -204,7 +203,7 @@ impl KeyState {
 
     pub fn handle(&mut self, map: &Keymap, ev: &KeyEvent) -> Vec<Action> {
         if ev.key == "Control" {
-            return self.control_key(map, ev);
+            return self.control_key(ev);
         }
         if !ev.pressed {
             return vec![];
@@ -237,10 +236,10 @@ impl KeyState {
         self.reader_command(map, ev)
     }
 
-    fn control_key(&mut self, map: &Keymap, ev: &KeyEvent) -> Vec<Action> {
+    fn control_key(&mut self, ev: &KeyEvent) -> Vec<Action> {
         if ev.pressed {
             self.ctrl_alone = ev.real;
-        } else if std::mem::take(&mut self.ctrl_alone) && ev.real && map.unclaimed_stop && !self.learn {
+        } else if std::mem::take(&mut self.ctrl_alone) && ev.real && !self.learn {
             return vec![Action::StopSpeech];
         }
         vec![]

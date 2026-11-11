@@ -21,20 +21,24 @@ pub struct Step {
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(untagged)]
 pub enum What {
-    Focus { object: ObjectInfo },
-    WindowActivated { object: ObjectInfo },
-    WindowClosed,
-    StateChanged { object: ObjectInfo, state: State, on: bool },
-    ValueChanged { object: ObjectInfo },
-    Alert { object: ObjectInfo, #[serde(default)] text: String },
-    Notification { app: String, text: String, #[serde(default)] urgent: bool },
-    Live { text: String, #[serde(default)] urgent: bool },
-    CaretMoved { object: ObjectInfo, text: String, old: usize, new: usize },
-    TextInserted { object: ObjectInfo, #[serde(default)] before: String, inserted: String },
-    TextRemoved { object: ObjectInfo, removed: String },
-    Key { #[serde(default)] modifier_only: bool },
+    Event(Box<Event>),
+    Key(KeyStep),
+}
+
+#[derive(Deserialize, Debug)]
+pub struct KeyStep {
+    #[serde(rename = "kind")]
+    _kind: KeyKind,
+    #[serde(default)]
+    modifier_only: bool,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+enum KeyKind {
+    Key,
 }
 
 enum Input {
@@ -44,20 +48,10 @@ enum Input {
 
 impl What {
     fn input(self) -> Input {
-        Input::Event(Box::new(match self {
-            What::Focus { object } => Event::Focus { object },
-            What::WindowActivated { object } => Event::WindowActivated { object },
-            What::WindowClosed => Event::WindowClosed,
-            What::StateChanged { object, state, on } => Event::StateChanged { object, state, on },
-            What::ValueChanged { object } => Event::ValueChanged { object },
-            What::Alert { object, text } => Event::Alert { object, text },
-            What::Notification { app, text, urgent } => Event::Notification { app, text, urgent },
-            What::Live { text, urgent } => Event::Live { text, urgent },
-            What::CaretMoved { object, text, old, new } => Event::CaretMoved { object, text, old, new },
-            What::TextInserted { object, before, inserted } => Event::TextInserted { object, before, inserted },
-            What::TextRemoved { object, removed } => Event::TextRemoved { object, removed },
-            What::Key { modifier_only } => return Input::Key { modifier_only },
-        }))
+        match self {
+            What::Event(e) => Input::Event(e),
+            What::Key(k) => Input::Key { modifier_only: k.modifier_only },
+        }
     }
 }
 

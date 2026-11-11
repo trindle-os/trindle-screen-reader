@@ -315,9 +315,9 @@ fn typing_echo_setting_is_obeyed() {
 fn say_all_reads_sentence_by_sentence_then_says_the_end() {
     let mut c = Coordinator::new();
     let first = c.say_all_start("One. Two.", 0);
-    assert_eq!(first, vec![Out::Say { id: 1, text: "\u{1}0\u{1}One.".into(), priority: Priority::Focus }]);
+    assert_eq!(first, vec![Out::Say { id: 1, text: "One.".into(), priority: Priority::Focus }]);
     let second = c.speech_done(100, 1);
-    assert_eq!(second, vec![Out::Say { id: 2, text: "\u{1}5\u{1}Two.".into(), priority: Priority::Normal }]);
+    assert_eq!(second, vec![Out::Say { id: 2, text: "Two.".into(), priority: Priority::Normal }]);
     let end = c.speech_done(200, 2);
     assert_eq!(end, vec![Out::Say { id: 3, text: "End of document".into(), priority: Priority::Normal }]);
 }
@@ -336,9 +336,9 @@ fn say_all_skips_forward_and_back() {
     c.say_all_start("One. Two. Three.", 0);
     let o = c.say_all_skip(Some(1), None);
     assert_eq!(o[0], Out::Stop);
-    assert_eq!(o[1], Out::Say { id: 2, text: "\u{1}5\u{1}Two.".into(), priority: Priority::Focus });
+    assert_eq!(o[1], Out::Say { id: 2, text: "Two.".into(), priority: Priority::Focus });
     let o = c.say_all_skip(Some(-1), None);
-    assert!(matches!(&o[1], Out::Say { text, .. } if text == "\u{1}0\u{1}One."));
+    assert!(matches!(&o[1], Out::Say { text, .. } if text == "One."));
 }
 
 #[test]

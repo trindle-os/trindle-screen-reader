@@ -13,14 +13,10 @@ fn no_two_commands_share_a_key_in_the_same_layer() {
         let v = default_bindings(layout);
         for (i, x) in v.iter().enumerate() {
             for y in &v[i + 1..] {
-                assert!(!(x.layer == y.layer && x.combo == y.combo), "{} and {} clash", x.id, y.id);
+                assert!(!(x.layer == y.layer && x.combo == y.combo), "{} and {} clash", x.name, y.name);
             }
             assert!(!x.name.is_empty());
         }
-        let mut ids: Vec<_> = v.iter().map(|x| x.id).collect();
-        ids.sort();
-        ids.dedup();
-        assert_eq!(ids.len(), v.len());
     }
 }
 

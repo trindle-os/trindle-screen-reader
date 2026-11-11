@@ -22,7 +22,7 @@ use tokio::sync::mpsc;
 mod commands;
 
 enum Fetched {
-    Items { generation: u64, items: Option<(Vec<ReviewItem>, Option<u64>)> },
+    Items { generation: u64, items: Option<(Vec<ReviewItem>, Option<u64>, bool)> },
     Text { generation: u64, text: Option<(String, bool)> },
     Doc { generation: u64, doc: Option<Doc> },
 }
@@ -94,11 +94,11 @@ struct Reader {
     review: Option<Review>,
     generation: u64,
     say_all_wanted: bool,
-    review_wanted: Option<(u64, ReviewCmd)>,
+    review_wanted: Option<ReviewCmd>,
     browse: Option<Browser>,
     browse_refs: Vec<ObjectRefOwned>,
     own_focus: Vec<(reader::model::Role, String, u64)>,
-    browse_wanted: Option<(u64, BrowseCmd)>,
+    browse_wanted: Option<BrowseCmd>,
     fetching: HashSet<(u64, u8)>,
     fetch_tx: mpsc::UnboundedSender<Fetched>,
     fake_tx: mpsc::UnboundedSender<u64>,

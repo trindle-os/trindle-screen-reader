@@ -25,6 +25,7 @@ const MAX_TEXT: i32 = 1000;
 const MAX_ALL: i32 = 20_000;
 const MAX_ITEMS: usize = 500;
 const MAX_NODES: usize = 1500;
+const MAX_CHILDREN: i32 = 200;
 const MAX_DEPTH: u8 = 12;
 const GATHER_LIMIT: Duration = Duration::from_secs(1);
 const PLACE_LIMIT: Duration = Duration::from_millis(300);
@@ -63,8 +64,13 @@ fn role_of(r: AR) -> Role {
         AR::Frame | AR::Window => Role::Window,
         AR::Dialog | AR::FileChooser => Role::Dialog,
         AR::Alert => Role::Alert,
+        AR::Paragraph | AR::BlockQuote | AR::Terminal => Role::Label,
         _ => Role::Unknown,
     }
+}
+
+fn is_text_block(r: AR) -> bool {
+    matches!(r, AR::Paragraph | AR::BlockQuote)
 }
 
 fn announced(r: Role) -> bool {
@@ -103,12 +109,13 @@ fn slow_now(slow: &mut HashMap<String, Instant>, app: &str, now: Instant) -> boo
     }
 }
 
-pub type Doc = (Vec<Node>, Vec<ObjectRefOwned>, Option<usize>);
+pub type Doc = (Vec<Node>, Vec<ObjectRefOwned>, Option<usize>, bool);
 
 pub struct Bus {
     conn: AccessibilityConnection,
     tracker: Rc<RefCell<Tracker>>,
     slow: RefCell<HashMap<String, Instant>>,
+    switch_was_on: bool,
 }
 
 impl Bus {
@@ -118,6 +125,7 @@ impl Bus {
             None => AccessibilityConnection::new().await,
         }
         .map_err(|e| e.to_string())?;
+        let switch_was_on = atspi_connection::read_session_accessibility().await.unwrap_or(true);
         if let Err(e) = atspi_connection::set_session_accessibility(true).await {
             crate::log::note(&format!("could not set the accessibility switch: {e}"));
         }
@@ -128,11 +136,13 @@ impl Bus {
         conn.register_event::<TextChangedEvent>().await.map_err(|e| e.to_string())?;
         conn.register_event::<PropertyChangeEvent>().await.map_err(|e| e.to_string())?;
         conn.register_event::<AnnouncementEvent>().await.map_err(|e| e.to_string())?;
-        Ok(Bus { conn, tracker: Rc::new(RefCell::new(Tracker::default())), slow: RefCell::new(HashMap::new()) })
+        Ok(Bus { conn, tracker: Rc::new(RefCell::new(Tracker::default())), slow: RefCell::new(HashMap::new()), switch_was_on })
     }
 
     pub async fn finish(&self) {
-        let _ = atspi_connection::set_session_accessibility(false).await;
+        if !self.switch_was_on {
+            let _ = atspi_connection::set_session_accessibility(false).await;
+        }
     }
 
     async fn ask_in<T>(&self, app: &str, f: impl std::future::Future<Output = zbus::Result<T>>) -> Option<T> {
@@ -231,17 +241,19 @@ impl Bus {
         (found, String::new())
     }
 
-    pub async fn window_items(&self) -> Option<(Vec<ReviewItem>, Option<u64>)> {
+    pub async fn window_items(&self) -> Option<(Vec<ReviewItem>, Option<u64>, bool)> {
         let deadline = Instant::now() + GATHER_LIMIT;
         let focus = self.tracker.borrow().focused_ref.clone()?;
         let window = self.window_of(&focus).await?;
         let focus_key = key_of(&focus);
         let mut items = Vec::new();
         let mut focus_id = None;
+        let mut cut = false;
         let mut seen = HashSet::new();
-        let mut queue = VecDeque::from([(window, 0u8)]);
-        while let Some((r, depth)) = queue.pop_front() {
+        let mut queue = VecDeque::from([(window, 0u8, false)]);
+        while let Some((r, depth, in_block)) = queue.pop_front() {
             if items.len() >= MAX_ITEMS || seen.len() >= MAX_NODES || Instant::now() >= deadline {
+                cut = true;
                 break;
             }
             if !seen.insert(key_of(&r)) {
@@ -252,17 +264,25 @@ impl Bus {
             if !set.contains(AS::Showing) {
                 continue;
             }
-            if let Some(item) = self.review_item(&r, &acc, items.len() as u64).await {
-                if key_of(&r) == focus_key {
-                    focus_id = Some(item.id);
+            let raw = ask(acc.get_role()).await.unwrap_or(AR::Unknown);
+            let covered = in_block && raw == AR::Static;
+            let mut block = in_block;
+            if !covered {
+                if let Some(item) = self.review_item(&r, &acc, items.len() as u64).await {
+                    block |= is_text_block(raw) && !item.text.is_empty();
+                    if key_of(&r) == focus_key {
+                        focus_id = Some(item.id);
+                    }
+                    items.push(item);
                 }
-                items.push(item);
             }
             if depth < MAX_DEPTH {
-                self.queue_children(&acc, depth + 1, deadline, &mut queue).await;
+                let mut kids = VecDeque::new();
+                cut |= self.queue_children(&acc, depth + 1, deadline, &mut kids).await;
+                queue.extend(kids.into_iter().map(|(c, d)| (c, d, block)));
             }
         }
-        Some((items, focus_id))
+        Some((items, focus_id, cut))
     }
 
     pub async fn document_nodes(&self) -> Option<Doc> {
@@ -274,9 +294,11 @@ impl Bus {
         let mut refs = Vec::new();
         let mut focus_at = None;
         let mut seen = HashSet::new();
-        let mut stack = vec![(window, 0u8)];
-        while let Some((r, depth)) = stack.pop() {
+        let mut cut = false;
+        let mut stack = vec![(window, 0u8, false)];
+        while let Some((r, depth, in_block)) = stack.pop() {
             if nodes.len() >= MAX_NODES || seen.len() >= MAX_NODES || Instant::now() >= deadline {
+                cut = true;
                 break;
             }
             if !seen.insert(key_of(&r)) {
@@ -287,18 +309,25 @@ impl Bus {
             if !set.contains(AS::Showing) {
                 continue;
             }
-            if key_of(&r) == focus_key {
-                focus_at = Some(nodes.len());
+            let raw = ask(acc.get_role()).await.unwrap_or(AR::Unknown);
+            let covered = in_block && raw == AR::Static;
+            let mut block = in_block;
+            if !covered {
+                if key_of(&r) == focus_key {
+                    focus_at = Some(nodes.len());
+                }
+                let node = self.document_node(&r, &acc, depth).await;
+                block |= is_text_block(raw) && !node.text.is_empty();
+                nodes.push(node);
+                refs.push(r.clone());
             }
-            nodes.push(self.document_node(&r, &acc, depth).await);
-            refs.push(r.clone());
             if depth < MAX_DEPTH {
                 let mut kids = VecDeque::new();
-                self.queue_children(&acc, depth + 1, deadline, &mut kids).await;
-                stack.extend(kids.into_iter().rev());
+                cut |= self.queue_children(&acc, depth + 1, deadline, &mut kids).await;
+                stack.extend(kids.into_iter().rev().map(|(c, d)| (c, d, block)));
             }
         }
-        Some((nodes, refs, focus_at))
+        Some((nodes, refs, focus_at, cut))
     }
 
     pub async fn grab_focus(&self, r: &ObjectRefOwned) -> bool {
@@ -362,10 +391,13 @@ impl Bus {
         ask(t.get_text(0, n)).await.unwrap_or_default()
     }
 
-    async fn queue_children(&self, acc: &AccessibleProxy<'_>, depth: u8, deadline: Instant, queue: &mut VecDeque<(ObjectRefOwned, u8)>) {
-        let n = ask(acc.child_count()).await.unwrap_or(0).clamp(0, 200);
+    async fn queue_children(&self, acc: &AccessibleProxy<'_>, depth: u8, deadline: Instant, queue: &mut VecDeque<(ObjectRefOwned, u8)>) -> bool {
+        let count = ask(acc.child_count()).await.unwrap_or(0);
+        let n = count.clamp(0, MAX_CHILDREN);
+        let mut cut = count > n;
         for i in 0..n {
             if Instant::now() >= deadline {
+                cut = true;
                 break;
             }
             if let Some(c) = ask(acc.get_child_at_index(i)).await {
@@ -374,6 +406,7 @@ impl Bus {
                 }
             }
         }
+        cut
     }
 
     pub async fn focused_text(&self) -> Option<(String, bool)> {
@@ -511,6 +544,10 @@ mod tests {
         assert_eq!(role_of(AR::Frame), Role::Window);
         assert_eq!(role_of(AR::FileChooser), Role::Dialog);
         assert_eq!(role_of(AR::Notification), Role::Unknown);
+        assert_eq!(role_of(AR::PasswordText), Role::PasswordEntry, "secrecy rests on this role");
+        assert_eq!([AR::Paragraph, AR::BlockQuote, AR::Terminal].map(role_of), [Role::Label; 3]);
+        assert_eq!(role_of(AR::Section), Role::Unknown, "a section only holds other objects");
+        assert!(is_text_block(AR::Paragraph) && !is_text_block(AR::Static));
         assert!(has_position(Role::ListItem) && !has_position(Role::Button));
         assert!(announced(Role::List) && !announced(Role::Label));
     }

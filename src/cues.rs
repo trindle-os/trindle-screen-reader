@@ -105,25 +105,7 @@ pub fn samples(c: Cue) -> Vec<i16> {
 }
 
 pub fn wav(c: Cue) -> Vec<u8> {
-    let s = samples(c);
-    let data_len = (s.len() * 2) as u32;
-    let mut w = Vec::with_capacity(44 + s.len() * 2);
-    w.extend_from_slice(b"RIFF");
-    w.extend_from_slice(&(36 + data_len).to_le_bytes());
-    w.extend_from_slice(b"WAVEfmt ");
-    w.extend_from_slice(&16u32.to_le_bytes());
-    w.extend_from_slice(&1u16.to_le_bytes());
-    w.extend_from_slice(&1u16.to_le_bytes());
-    w.extend_from_slice(&RATE.to_le_bytes());
-    w.extend_from_slice(&(RATE * 2).to_le_bytes());
-    w.extend_from_slice(&2u16.to_le_bytes());
-    w.extend_from_slice(&16u16.to_le_bytes());
-    w.extend_from_slice(b"data");
-    w.extend_from_slice(&data_len.to_le_bytes());
-    for x in s {
-        w.extend_from_slice(&x.to_le_bytes());
-    }
-    w
+    trindle_common::wav::wav(&samples(c), RATE).unwrap_or_default()
 }
 
 pub fn path(dir: &Path, c: Cue) -> PathBuf {
@@ -147,6 +129,9 @@ impl CueGate {
     pub const WINDOW_MS: u64 = 1000;
 
     pub fn allow(&mut self, c: Cue, now_ms: u64) -> bool {
+        if c == Cue::SecretKey {
+            return true;
+        }
         if self.last.is_some_and(|(l, t)| l == c && now_ms.saturating_sub(t) < Self::WINDOW_MS) {
             return false;
         }
@@ -237,5 +222,7 @@ mod tests {
         assert!(g.allow(Cue::Dialog, 450));
         assert!(g.allow(Cue::Window, 500));
         assert!(g.allow(Cue::Window, 1500));
+        assert!(g.allow(Cue::SecretKey, 1600));
+        assert!(g.allow(Cue::SecretKey, 1650), "every key typed into a password field clicks");
     }
 }

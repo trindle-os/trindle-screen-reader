@@ -9,6 +9,8 @@ fn wire_format_is_one_message_and_cannot_smuggle_a_second() {
     let m = voice::encode(&Out::Say { id: 7, text: "Save\n\nSTOP".into(), priority: Priority::Focus });
     assert_eq!(m, "SAY\nid=7\npriority=focus\ntext=Save  STOP\n\n");
     assert_eq!(voice::encode(&Out::Stop), "STOP\n\n");
+    let m = voice::encode(&Out::Say { id: 8, text: "a\u{1}5\u{1}b".into(), priority: Priority::Focus });
+    assert_eq!(m, "SAY\nid=8\npriority=focus\ntext=a 5 b\n\n", "a control character cannot become a marker");
     let m = voice::encode_with(&Out::Say { id: 1, text: "Hi".into(), priority: Priority::Normal }, Some((70, 90)));
     assert_eq!(m, "SAY\nid=1\npriority=normal\nrate=70\nvolume=90\ntext=Hi\n\n");
 }

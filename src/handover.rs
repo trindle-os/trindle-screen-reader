@@ -17,26 +17,52 @@ pub fn is_greeter() -> bool {
     std::env::var(GREETER_ENV).is_ok_and(|v| v == "greeter")
 }
 
-fn open(path: &std::path::Path) -> Option<File> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let made = OpenOptions::new().create(true).truncate(false).write(true).read(true).mode(0o666).open(path);
+fn open(path: &std::path::Path, create: bool) -> Option<File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let made = if create {
+        match OpenOptions::new().write(true).create_new(true).mode(0o644).custom_flags(libc_nofollow()).open(path) {
+            Ok(f) => Some(f),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => None,
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    crate::log::note(&format!("hand-over lock {} cannot be made: {e}", path.display()));
+                }
+                return None;
+            }
+        }
+    } else {
+        None
+    };
     let f = match made {
-        Ok(f) => {
-            let _ = f.set_permissions(std::fs::Permissions::from_mode(0o666));
+        Some(f) => {
+            if let Err(e) = f.set_permissions(std::fs::Permissions::from_mode(0o644)) {
+                crate::log::note(&format!("hand-over lock {} cannot be opened to readers: {e}", path.display()));
+                return None;
+            }
             f
         }
-        Err(_) => match File::open(path) {
+        None => match OpenOptions::new().read(true).custom_flags(libc_nofollow()).open(path) {
             Ok(f) => f,
             Err(e) => {
-                if path.parent().is_some_and(|p| !p.exists()) {
-                    return None;
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    crate::log::note(&format!("hand-over lock {} cannot be opened: {e}", path.display()));
                 }
-                crate::log::note(&format!("hand-over lock {} cannot be opened: {e}", path.display()));
                 return None;
             }
         },
     };
+    let meta = f.metadata().ok()?;
+    let folder = path.parent().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.uid());
+    let me = rustix::process::geteuid().as_raw();
+    if !meta.is_file() || ![Some(0), folder, Some(me)].contains(&Some(meta.uid())) {
+        crate::log::note(&format!("hand-over lock {} is not a plain file of the system", path.display()));
+        return None;
+    }
     Some(f)
+}
+
+fn libc_nofollow() -> i32 {
+    rustix::fs::OFlags::NOFOLLOW.bits() as i32
 }
 
 pub struct Held {
@@ -44,7 +70,7 @@ pub struct Held {
 }
 
 pub fn take(path: &std::path::Path) -> Option<Held> {
-    let f = open(path)?;
+    let f = open(path, true)?;
     match f.try_lock() {
         Ok(()) => Some(Held { _file: f }),
         Err(TryLockError::WouldBlock) | Err(TryLockError::Error(_)) => None,
@@ -52,7 +78,7 @@ pub fn take(path: &std::path::Path) -> Option<Held> {
 }
 
 pub async fn wait_until_free(path: &std::path::Path, max: Duration) -> bool {
-    let Some(f) = open(path) else { return true };
+    let Some(f) = open(path, false) else { return true };
     let mut waited = Duration::ZERO;
     loop {
         match f.try_lock() {
@@ -99,11 +125,11 @@ mod tests {
     }
 
     #[test]
-    fn the_lock_file_is_open_to_the_session_user() {
+    fn the_lock_file_is_readable_by_the_session_user() {
         use std::os::unix::fs::PermissionsExt;
         let p = temp("mode");
         let _held = take(&p).unwrap();
-        assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o666);
+        assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o644);
         let _ = std::fs::remove_file(p);
     }
 
@@ -117,6 +143,28 @@ mod tests {
         drop(held);
         assert!(wait_until_free(&p, Duration::from_millis(150)).await);
         let _ = std::fs::remove_file(p);
+    }
+
+    #[tokio::test]
+    async fn a_link_in_place_of_the_lock_is_not_followed_or_changed() {
+        use std::os::unix::fs::PermissionsExt;
+        let target = temp("target");
+        std::fs::write(&target, "x").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let link = temp("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(take(&link).is_none(), "the greeter's reader refuses a link");
+        assert!(wait_until_free(&link, Duration::from_millis(100)).await, "the session's reader goes ahead without a lock");
+        assert_eq!(std::fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_file(link);
+        let _ = std::fs::remove_file(target);
+    }
+
+    #[tokio::test]
+    async fn a_session_reader_never_makes_the_file() {
+        let p = temp("absent");
+        assert!(wait_until_free(&p, Duration::from_millis(100)).await);
+        assert!(!p.exists());
     }
 
     #[tokio::test]

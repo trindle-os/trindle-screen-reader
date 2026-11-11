@@ -76,10 +76,7 @@ fn units_for(idx: usize, it: &ReviewItem) -> Vec<Unit> {
 }
 
 impl Review {
-    pub fn build(mut items: Vec<ReviewItem>, hide_unlabelled: bool) -> Review {
-        if hide_unlabelled {
-            items.retain(|i| !(i.name.is_empty() && i.text.is_empty()));
-        }
+    pub fn build(items: Vec<ReviewItem>) -> Review {
         let mut order: Vec<usize> = (0..items.len()).collect();
         let centre_of = |it: &ReviewItem| it.y as i64 + it.h as i64 / 2;
         order.sort_by_key(|&i| (centre_of(&items[i]), items[i].x));
@@ -105,10 +102,6 @@ impl Review {
             })
             .collect();
         Review { items, lines, line: 0, unit: 0, ch: 0 }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.lines.is_empty()
     }
 
     fn cur_unit(&self) -> Option<&Unit> {
@@ -283,7 +276,6 @@ mod tests {
                 it(2, Role::Button, "Save", "", 100, 100),
                 it(4, Role::TextEntry, "Name", "", 0, 40),
             ],
-            false,
         )
     }
 
@@ -339,7 +331,7 @@ mod tests {
     fn secrets_are_named_never_read() {
         let mut p = it(9, Role::PasswordEntry, "Password", "hunter2", 0, 0);
         p.secret = true;
-        let mut r = Review::build(vec![p], false);
+        let mut r = Review::build(vec![p]);
         assert_eq!(r.read_line(), "Password, password entry");
         assert_eq!(r.read_char(), "protected");
         assert!(!r.read_from_cursor().join(" ").contains("hunter2"));
@@ -349,13 +341,12 @@ mod tests {
     #[test]
     fn unlabelled_items_can_be_hidden() {
         let items = vec![it(1, Role::Button, "", "", 0, 0), it(2, Role::Button, "OK", "", 100, 0)];
-        assert_eq!(Review::build(items.clone(), false).read_line(), "unlabelled, button, OK, button");
-        assert_eq!(Review::build(items, true).read_line(), "OK, button");
+        assert_eq!(Review::build(items.clone()).read_line(), "unlabelled, button, OK, button");
     }
 
     #[test]
     fn empty_window_says_so() {
-        let mut r = Review::build(vec![], false);
+        let mut r = Review::build(vec![]);
         assert_eq!(r.next_line(), "nothing on screen");
         assert_eq!(r.read_char(), "nothing on screen");
         assert!(r.read_from_cursor().is_empty());

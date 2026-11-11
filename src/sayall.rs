@@ -69,10 +69,6 @@ impl SayAll {
         (!self.ended).then(|| &self.sentences[self.cur])
     }
 
-    pub fn position(&self) -> usize {
-        self.sentences[self.cur].start
-    }
-
     pub fn advance(&mut self) -> Option<&Sentence> {
         if self.cur + 1 < self.sentences.len() {
             self.cur += 1;
@@ -112,10 +108,6 @@ impl SayAll {
         self.ended = false;
         self.current()
     }
-}
-
-pub fn with_marker(n: usize, text: &str) -> String {
-    format!("\u{1}{n}\u{1}{text}")
 }
 
 #[cfg(test)]
@@ -167,10 +159,5 @@ mod tests {
         r.skip_sentence(4);
         assert_eq!(r.skip_paragraph(false).unwrap().text, "New paragraph here.");
         assert!(r.skip_paragraph(true).is_none());
-    }
-
-    #[test]
-    fn marker_is_wrapped_in_control_characters() {
-        assert_eq!(with_marker(3, "Hi."), "\u{1}3\u{1}Hi.");
     }
 }

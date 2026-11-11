@@ -23,7 +23,7 @@ fn main() {
         println!("focus: {:?}", got.ok().flatten().map(|o| o.name));
         tokio::time::sleep(Duration::from_millis(500)).await;
         match bus.window_items().await {
-            Some((items, focus)) => {
+            Some((items, focus, _)) => {
                 println!("items: {} focus id {:?}", items.len(), focus);
                 for i in &items {
                     println!("  #{} {:?} {:?} text={:?} at {},{} {}x{}", i.id, i.role, i.name, i.text, i.x, i.y, i.w, i.h);
@@ -33,7 +33,7 @@ fn main() {
         }
         println!("focused text: {:?}", bus.focused_text().await);
         match bus.document_nodes().await {
-            Some((nodes, refs, focus)) => {
+            Some((nodes, refs, focus, _)) => {
                 println!("browse nodes: {} focus at {:?}", nodes.len(), focus);
                 for n in &nodes {
                     println!("  {}{:?} {:?} text={:?} level={} count={}", "  ".repeat(n.depth as usize), n.role, n.name, n.text, n.level, n.count);

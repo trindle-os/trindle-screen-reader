@@ -186,7 +186,7 @@ fn review_survives_overlapping_and_absurd_rectangles() {
                 h: r.next() as i32,
             })
             .collect();
-        let mut v = Review::build(items, r.below(2) == 0);
+        let mut v = Review::build(items);
         for _ in 0..40 {
             let _ = match r.below(11) {
                 0 => v.next_line(),

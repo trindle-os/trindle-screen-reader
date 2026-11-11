@@ -157,7 +157,10 @@ async fn state_changed<F: Facts>(f: &F, tr: &RefCell<Tracker>, s: StateChangedEv
         return if s.enabled { f.appeared(&s.item).await } else { None };
     }
     let st = state_of(state)?;
-    let object = f.describe(&s.item).await?;
+    if !tr.borrow().is_focused(&s.item) {
+        return None;
+    }
+    let object = f.light(&s.item).await?;
     Some(Event::StateChanged { object, state: st, on: s.enabled })
 }
 
@@ -467,6 +470,16 @@ mod tests {
         let change = |item| Ev::Object(ObjectEvents::PropertyChange(PropertyChangeEvent { item, property: "accessible-name".into(), value: Property::Name("n".into()) }));
         assert!(matches!(convert(&f, &tr, change(a)).await, Some(Event::ValueChanged { .. })));
         assert!(convert(&f, &tr, change(b)).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn state_changes_are_only_said_for_the_focused_object() {
+        let (a, b) = (obj(":1.1", "/a"), obj(":1.2", "/b"));
+        let f = Fake::default();
+        let tr = tracker_focused(&a);
+        let busy = |item| Ev::Object(ObjectEvents::StateChanged(StateChangedEvent { item, state: atspi::State::Busy, enabled: true }));
+        assert!(matches!(convert(&f, &tr, busy(a)).await, Some(Event::StateChanged { .. })));
+        assert!(convert(&f, &tr, busy(b)).await.is_none(), "a background object stays quiet");
     }
 
     async fn run_pool(f: Rc<Fake>, evs: Vec<Ev>, idle: Duration, wait: Duration) -> Vec<Event> {

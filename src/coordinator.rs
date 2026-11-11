@@ -1,7 +1,7 @@
 //! The one owner of output: everything that wants to be heard goes through `submit`, and time is passed in.
 
 use crate::model::{Priority, Utterance};
-use crate::sayall::{self, SayAll};
+use crate::sayall::SayAll;
 use std::collections::VecDeque;
 
 pub const DUPLICATE_WINDOW_MS: u64 = 1000;
@@ -34,7 +34,7 @@ pub struct Coordinator {
     last_key: Option<u64>,
     next_id: u64,
     pub muted: bool,
-    history: VecDeque<String>,
+    last: Option<String>,
     say_all: Option<(SayAll, u64)>,
     say_all_cut: bool,
 }
@@ -56,14 +56,14 @@ impl Coordinator {
             last_key: None,
             next_id: 1,
             muted: false,
-            history: VecDeque::new(),
+            last: None,
             say_all: None,
             say_all_cut: false,
         }
     }
 
     pub fn repeat_last(&mut self, spell: bool) -> Vec<Out> {
-        let Some(last) = self.history.back().cloned().filter(|_| !self.muted) else { return vec![] };
+        let Some(last) = self.last.clone().filter(|_| !self.muted) else { return vec![] };
         let text = if spell { crate::caret::spell(&last) } else { last };
         let mut out = Vec::new();
         if self.speaking.take().is_some() {
@@ -114,7 +114,7 @@ impl Coordinator {
     fn say_all_speak(&mut self, priority: Priority, out: &mut Vec<Out>) {
         let Some((r, sid)) = self.say_all.as_mut() else { return };
         let Some(sent) = r.current() else { return };
-        let (id, text) = (self.next_id, sayall::with_marker(sent.start, &sent.text));
+        let (id, text) = (self.next_id, sent.text.clone());
         self.next_id += 1;
         *sid = id;
         self.begin(id, priority, &text);
@@ -150,10 +150,7 @@ impl Coordinator {
         let id = self.next_id;
         self.next_id += 1;
         self.begin(id, u.priority, &u.text);
-        self.history.push_back(u.text.clone());
-        while self.history.len() > 50 {
-            self.history.pop_front();
-        }
+        self.last = Some(u.text.clone());
         out.push(Out::Say { id, text: u.text, priority: u.priority });
     }
 
@@ -311,14 +308,12 @@ mod tests {
     }
 
     #[test]
-    fn history_keeps_fifty_newest_last() {
+    fn repeat_says_the_newest_item() {
         let mut c = Coordinator::new();
-        for i in 0..80 {
+        for i in 0..3 {
             c.submit(i * 2000, say(&format!("m{i}"), Priority::Focus));
         }
-        assert_eq!(c.history.len(), 50);
-        assert_eq!(c.history.back().map(String::as_str), Some("m79"));
-        assert_eq!(c.history.front().map(String::as_str), Some("m30"));
+        assert_eq!(c.last.as_deref(), Some("m2"));
     }
 
     #[test]
@@ -327,16 +322,16 @@ mod tests {
         c.submit(0, say("Save, button", Priority::Focus));
         c.repeat_last(false);
         c.repeat_last(true);
-        assert_eq!(c.history, ["Save, button"]);
+        assert_eq!(c.last.as_deref(), Some("Save, button"));
     }
 
     #[test]
-    fn say_all_position_follows_the_sentence_and_clears_at_the_end() {
+    fn say_all_moves_sentence_by_sentence_and_clears_at_the_end() {
         let mut c = Coordinator::new();
         c.say_all_start("One. Two.", 0);
-        assert_eq!(c.say_all.as_ref().map(|(r, _)| r.position()), Some(0));
+        assert_eq!(c.say_all.as_ref().and_then(|(r, _)| r.current()).map(|s| s.start), Some(0));
         c.speech_done(100, 1);
-        assert_eq!(c.say_all.as_ref().map(|(r, _)| r.position()), Some(5));
+        assert_eq!(c.say_all.as_ref().and_then(|(r, _)| r.current()).map(|s| s.start), Some(5));
         c.speech_done(200, 2);
         assert!(c.say_all.is_none());
     }

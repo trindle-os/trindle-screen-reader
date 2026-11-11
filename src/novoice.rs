@@ -181,7 +181,10 @@ fn ensure_file(dir: &Path) -> Option<PathBuf> {
         return Some(f);
     }
     std::fs::create_dir_all(dir).ok()?;
-    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    if let Err(e) = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)) {
+        crate::log::note(&format!("cannot close the sound folder to others: {e}"));
+        return None;
+    }
     std::fs::write(&f, want).ok()?;
     Some(f)
 }

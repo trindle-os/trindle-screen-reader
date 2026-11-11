@@ -9,6 +9,8 @@ use std::rc::Rc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, Notify};
 
+pub const ACCEPT_RETRY: std::time::Duration = std::time::Duration::from_millis(200);
+
 pub const MAX_LINE: usize = 256;
 
 pub const COMPOSITOR_EXE: &str = "/usr/lib/trindle/bin/trindle-compose";
@@ -69,21 +71,20 @@ struct Slot {
 
 struct Holder {
     id: u64,
-    trusted: bool,
     kick: Rc<Notify>,
 }
 
 impl Slot {
     fn claim(&mut self, trusted: bool) -> Option<(u64, Rc<Notify>)> {
         if let Some(h) = &self.current {
-            if h.trusted || !trusted {
+            if !trusted {
                 return None;
             }
             h.kick.notify_one();
         }
         self.last_id += 1;
         let kick = Rc::new(Notify::new());
-        self.current = Some(Holder { id: self.last_id, trusted, kick: kick.clone() });
+        self.current = Some(Holder { id: self.last_id, kick: kick.clone() });
         Some((self.last_id, kick))
     }
 
@@ -122,7 +123,7 @@ pub fn listen(dir: &Path, tx: mpsc::Sender<Wire>, back: Back) -> Result<Option<K
 
 fn listen_for(dir: &Path, tx: mpsc::Sender<Wire>, back: Back, compositor: PathBuf) -> Result<Option<KeySock>, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| format!("cannot close the reader folder to others: {e}"))?;
     let lock = File::options().create(true).truncate(false).write(true).read(true).open(dir.join("reader.lock")).map_err(|e| e.to_string())?;
     match lock.try_lock() {
         Ok(()) => {}
@@ -132,11 +133,19 @@ fn listen_for(dir: &Path, tx: mpsc::Sender<Wire>, back: Back, compositor: PathBu
     let path = dir.join("keys.sock");
     let _ = std::fs::remove_file(&path);
     let listener = tokio::net::UnixListener::bind(&path).map_err(|e| e.to_string())?;
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("cannot close the key socket to others: {e}"))?;
     let slot = Rc::new(RefCell::new(Slot::default()));
     let dir = dir.to_path_buf();
     tokio::task::spawn_local(async move {
-        while let Ok((stream, _)) = listener.accept().await {
+        loop {
+            let stream = match listener.accept().await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    crate::log::note(&format!("key socket: accept failed: {e}"));
+                    tokio::time::sleep(ACCEPT_RETRY).await;
+                    continue;
+                }
+            };
             let me = rustix::process::geteuid().as_raw();
             let Ok(cred) = stream.peer_cred() else { continue };
             if cred.uid() != me {
@@ -256,15 +265,16 @@ mod tests {
     }
 
     #[test]
-    fn a_trusted_peer_replaces_an_untrusted_one_but_never_the_reverse() {
+    fn a_trusted_peer_replaces_any_holder_but_an_untrusted_one_replaces_none() {
         let mut slot = Slot::default();
         let (first, kick) = slot.claim(false).expect("an empty slot is free");
         assert!(slot.claim(false).is_none(), "an untrusted peer cannot take a taken slot");
         let (second, _) = slot.claim(true).expect("a trusted peer replaces an untrusted one");
         assert!(!slot.release(first), "the replaced peer no longer owns the slot");
         assert!(slot.claim(false).is_none());
-        assert!(slot.claim(true).is_none(), "a trusted peer is not replaced");
-        assert!(slot.release(second));
+        let (third, _) = slot.claim(true).expect("the compositor reconnecting replaces a holder that only looked trusted");
+        assert!(!slot.release(second));
+        assert!(slot.release(third));
         assert!(slot.claim(true).is_some());
         drop(kick);
     }

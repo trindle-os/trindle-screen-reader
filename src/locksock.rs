@@ -66,9 +66,17 @@ fn listen_for(dir: &Path, tx: mpsc::Sender<LockEvent>, lock: PathBuf) -> Result<
     let dir = dir.to_path_buf();
     let _ = std::fs::remove_file(&path);
     let listener = tokio::net::UnixListener::bind(&path).map_err(|e| e.to_string())?;
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| format!("cannot close the lock socket to others: {e}"))?;
     tokio::task::spawn_local(async move {
-        while let Ok((stream, _)) = listener.accept().await {
+        loop {
+            let stream = match listener.accept().await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    crate::log::note(&format!("lock socket: accept failed: {e}"));
+                    tokio::time::sleep(crate::keysock::ACCEPT_RETRY).await;
+                    continue;
+                }
+            };
             let me = rustix::process::geteuid().as_raw();
             let Ok(cred) = stream.peer_cred() else { continue };
             if cred.uid() != me || !crate::keysock::peer_trusted(&cred, &lock, &dir) {
